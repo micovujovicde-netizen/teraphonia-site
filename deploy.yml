@@ -1,0 +1,57 @@
+name: Deploy TERAPHONIA website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'TERAPHONIA_Website.zip'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract website
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          unzip -q TERAPHONIA_Website.zip -d _site
+          if [ ! -f _site/index.html ]; then
+            mapfile -t indexes < <(find _site -mindepth 2 -maxdepth 3 -name index.html -type f)
+            if [ "${#indexes[@]}" -ne 1 ]; then
+              echo 'ERROR: Expected one index.html in ZIP.' >&2
+              exit 1
+            fi
+            site_dir=$(dirname "${indexes[0]}")
+            cp -a "$site_dir/." _site/
+          fi
+          touch _site/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
