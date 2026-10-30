@@ -1,0 +1,63 @@
+name: BrakeMonster - Download TEST Worker Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloudflare_account_id:
+        description: 'Cloudflare Account ID (32 hex characters)'
+        required: true
+        type: string
+
+# This workflow only reads one TEST Worker and uploads a GitHub artifact.
+# It never deploys, uploads, or alters any Cloudflare service or database.
+permissions:
+  contents: read
+
+jobs:
+  download-test-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check credentials
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ inputs.cloudflare_account_id }}
+          CF_READ_TOKEN: ${{ secrets.CF_TEST_WORKER_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$CF_ACCOUNT_ID" =~ ^[a-fA-F0-9]{32}$ ]]; then
+            echo '::error::Account ID must be exactly 32 hexadecimal characters.'
+            exit 1
+          fi
+          if [ -z "$CF_READ_TOKEN" ]; then
+            echo '::error::Create the GitHub Actions secret CF_TEST_WORKER_READ_TOKEN with access to the TEST Worker only.'
+            exit 1
+          fi
+
+      - name: Download deployed TEST Worker (GET only)
+        shell: bash
+        env:
+          CF_ACCOUNT_ID: ${{ inputs.cloudflare_account_id }}
+          CF_READ_TOKEN: ${{ secrets.CF_TEST_WORKER_READ_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p backup
+          curl --fail --silent --show-error --location --retry 2 \
+            --connect-timeout 15 --max-time 60 \
+            -H "Authorization: Bearer $CF_READ_TOKEN" \
+            -o backup/worker.js \
+            "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/workers/scripts/brakemonster-license-test/content/v2"
+          test -s backup/worker.js
+          cp backup/worker.js "$RUNNER_TEMP/worker-check.mjs"
+          node --check "$RUNNER_TEMP/worker-check.mjs"
+          (cd backup && sha256sum worker.js > SHA256SUMS.txt)
+          echo 'Deployed TEST Worker successfully downloaded. No Cloudflare data was changed.'
+          wc -lc backup/worker.js
+
+      - name: Save source as downloadable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BrakeMonster-TEST-Worker-source
+          path: backup/
+          if-no-files-found: error
+          retention-days: 7
