@@ -13,9 +13,10 @@ permissions:
   pages: write
   id-token: write
 
+# Queue a new deployment instead of canceling the one already running.
 concurrency:
   group: github-pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
