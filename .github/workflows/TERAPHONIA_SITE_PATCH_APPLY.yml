@@ -1,1 +1,69 @@
+name: TERAPHON — apply HELP and product images
 
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'TERAPHON_SITE_HELP_PATCH.zip'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: teraphon-website-patch
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout latest website
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Merge into current TERAPHONIA_Website.zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, zipfile, subprocess, sys
+          patch=pathlib.Path('TERAPHON_SITE_HELP_PATCH.zip')
+          site=pathlib.Path('TERAPHONIA_Website.zip')
+          if not patch.is_file() or not site.is_file():
+              raise SystemExit('Missing patch or current website ZIP')
+          with zipfile.ZipFile(patch) as z:
+              script=z.read('apply_site_patch.py')
+          pathlib.Path('apply_site_patch.tmp.py').write_bytes(script)
+          try:
+              subprocess.run([sys.executable, 'apply_site_patch.tmp.py', str(site), str(patch)], check=True)
+          finally:
+              pathlib.Path('apply_site_patch.tmp.py').unlink(missing_ok=True)
+          PY
+
+      - name: Commit website ZIP only
+        id: save
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add TERAPHONIA_Website.zip
+          if git diff --cached --quiet; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo 'Already current.'
+          else
+            git commit -m 'Add TERAPHON multilingual help and mobile pricing art'
+            git push origin HEAD:main
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run existing website deploy
+        if: steps.save.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
