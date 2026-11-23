@@ -7,8 +7,6 @@ on:
       - 'TERAPHONIA_Website.zip'
       - 'releases/latest.json'
       - '.github/workflows/deploy.yml'
-  release:
-    types: [published, edited]
   schedule:
     - cron: '3-58/5 * * * *'
   workflow_dispatch:
