@@ -373,6 +373,18 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: _site
+      - name: Wait for Pages artifact to become visible
+        if: github.event_name != 'schedule' || steps.release.outputs.deploy == 'true'
+        shell: bash
+        run: |
+          url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?name=github-pages"
+          for attempt in {1..6}; do
+            if curl -fsS --max-time 5 -H 'Cache-Control: no-cache' "$url" | jq -e '.artifacts | any(.name == "github-pages" and .expired == false)' >/dev/null; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo '::warning::The Pages artifact has not appeared in the public API yet; attempting deployment.'
       - name: Deploy to GitHub Pages
         if: github.event_name != 'schedule' || steps.release.outputs.deploy == 'true'
         id: deployment
